@@ -22,6 +22,7 @@ public class Booster
    private String id;
    private String githubRepo;
    private String gitRef;
+   private Mission mission;
    private String description = "No description available";
    private String boosterDescriptorPath = ".openshiftio/booster.yaml";
 
@@ -116,6 +117,22 @@ public class Booster
    public void setDescription(String description)
    {
       this.description = description;
+   }
+
+   /**
+    * @return the mission
+    */
+   public Mission getMission()
+   {
+      return mission;
+   }
+
+   /**
+    * @param mission the mission to set
+    */
+   public void setMission(Mission mission)
+   {
+      this.mission = mission;
    }
 
    /**

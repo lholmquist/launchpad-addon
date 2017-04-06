@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -65,6 +66,9 @@ public class BoosterCatalogService
    private static final String DEFAULT_INDEX_PERIOD = "0";
    private static final String DEFAULT_GIT_REF = "master";
    private static final String DEFAULT_GIT_REPOSITORY_URL = "https://github.com/openshiftio/booster-catalog.git";
+
+   private static final String MISSIONS_YAML = "missions.yaml";
+   private static final String PROGRAMS_YAML = "programs.yaml";
    /**
     * Files to be excluded from project creation
     */
@@ -139,6 +143,8 @@ public class BoosterCatalogService
                }
             }
          }
+         // Index missions
+         Map<String, Mission> missions = indexMissions(catalogPath.resolve(MISSIONS_YAML));
          final Path moduleRoot = catalogPath.resolve(MODULES_DIR);
          final List<Booster> quickstarts = new ArrayList<>();
          // Read the YAML files
@@ -148,11 +154,13 @@ public class BoosterCatalogService
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException
             {
                File ioFile = file.toFile();
-               if (ioFile.getName().endsWith(".yaml") || ioFile.getName().endsWith(".yml"))
+               String fileName = ioFile.getName().toLowerCase();
+               if ((fileName.endsWith(".yaml") || fileName.endsWith(".yml"))
+                        && (!fileName.equals(MISSIONS_YAML) && !fileName.equals(PROGRAMS_YAML)))
                {
-                  String id = removeFileExtension(ioFile.getName());
+                  String id = removeFileExtension(fileName);
                   Path modulePath = catalogPath.resolve(MODULES_DIR + File.separator + id);
-                  indexBooster(id, file, modulePath).ifPresent(quickstarts::add);
+                  indexBooster(id, file, modulePath, missions).ifPresent(quickstarts::add);
                }
                return FileVisitResult.CONTINUE;
             }
@@ -181,6 +189,25 @@ public class BoosterCatalogService
       }
    }
 
+   private Map<String, Mission> indexMissions(Path file)
+   {
+      Map<String, Mission> missions = new HashMap<>();
+      final Yaml yaml = new Yaml();
+      try (BufferedReader reader = Files.newBufferedReader(file))
+      {
+         for (Object item : yaml.loadAll(reader))
+         {
+            Mission mission = (Mission) item;
+            missions.put(mission.getId(), mission);
+         }
+      }
+      catch (Exception e)
+      {
+         logger.log(Level.SEVERE, "Error while reading metadata from " + file, e);
+      }
+      return missions;
+   }
+
    /**
     * Takes a YAML file from the repository and indexes it
     * 
@@ -188,7 +215,7 @@ public class BoosterCatalogService
     * @return an {@link Optional} containing a {@link Booster}
     */
    @SuppressWarnings("unchecked")
-   private Optional<Booster> indexBooster(String id, Path file, Path moduleDir)
+   private Optional<Booster> indexBooster(String id, Path file, Path moduleDir, Map<String, Mission> missions)
    {
       final Yaml yaml = new Yaml();
       logger.info(() -> "Indexing " + file + " ...");
