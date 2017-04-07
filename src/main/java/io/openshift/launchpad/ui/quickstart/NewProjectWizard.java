@@ -15,9 +15,12 @@
  */
 package io.openshift.launchpad.ui.quickstart;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
@@ -44,6 +47,7 @@ import org.jboss.forge.addon.ui.wizard.UIWizard;
 
 import io.openshift.launchpad.catalog.Booster;
 import io.openshift.launchpad.catalog.BoosterCatalogService;
+import io.openshift.launchpad.catalog.Mission;
 import io.openshift.launchpad.ui.input.ProjectName;
 import io.openshift.launchpad.ui.input.TopLevelPackage;
 import io.openshift.launchpad.ui.input.Version;
@@ -56,8 +60,12 @@ import io.openshift.launchpad.ui.input.Version;
 public class NewProjectWizard implements UIWizard
 {
    @Inject
+   @WithAttributes(label = "Mission", required = true)
+   private UISelectOne<Mission> mission;
+
+   @Inject
    @WithAttributes(label = "Booster", required = true)
-   private UISelectOne<Booster> type;
+   private UISelectOne<Booster> booster;
 
    @Inject
    private ProjectName named;
@@ -84,21 +92,44 @@ public class NewProjectWizard implements UIWizard
 
       if (uiContext.getProvider().isGUI())
       {
-         type.setItemLabelConverter(Booster::getName);
+         mission.setItemLabelConverter(Mission::getName);
+         booster.setItemLabelConverter(Booster::getName);
       }
       else
       {
-         type.setItemLabelConverter(Booster::getId);
+         mission.setItemLabelConverter(Mission::getId);
+         booster.setItemLabelConverter(Booster::getId);
       }
-      List<Booster> quickstarts = catalogService.getBoosters();
-      type.setValueChoices(quickstarts);
-      if (!quickstarts.isEmpty())
+      List<Booster> boosters = catalogService.getBoosters();
+      List<Mission> missions = catalogService.getMissions();
+      Mission all = new Mission();
+      all.setId("all");
+      all.setName("All Missions");
+      List<Mission> allMissions = new ArrayList<>();
+      allMissions.add(all);
+      allMissions.addAll(missions);
+
+      mission.setValueChoices(allMissions);
+      booster.setValueChoices(
+               () -> boosters
+                        .stream()
+                        .filter(b -> Objects.isNull(b.getMissionId())
+                                 || Objects.equals(mission.getValue().getId(), b.getMissionId()))
+                        .collect(Collectors.toList()));
+      if (!boosters.isEmpty())
       {
-         type.setDefaultValue(quickstarts.get(0));
+         booster.setDefaultValue(boosters.get(0));
       }
-      Callable<String> description = () -> type.getValue() != null ? type.getValue().getDescription() : null;
-      type.setDescription(description).setNote(description);
-      builder.add(type).add(named).add(topLevelPackage).add(version);
+      if (!allMissions.isEmpty())
+      {
+         mission.setDefaultValue(allMissions.get(0));
+      }
+      Callable<String> boosterDescription = () -> booster.getValue() != null ? booster.getValue().getDescription()
+               : null;
+      Callable<String> missionDescription = () -> mission.getValue() != null ? mission.getValue().getDocURI() : null;
+      mission.setDescription(missionDescription).setNote(missionDescription);
+      booster.setDescription(boosterDescription).setNote(boosterDescription);
+      builder.add(mission).add(booster).add(named).add(topLevelPackage).add(version);
    }
 
    @Override
@@ -114,14 +145,14 @@ public class NewProjectWizard implements UIWizard
    {
       Map<Object, Object> attributeMap = context.getUIContext().getAttributeMap();
       attributeMap.put("name", named.getValue());
-      attributeMap.put("type", type.getValue());
+      attributeMap.put("booster", booster.getValue());
       return null;
    }
 
    @Override
    public Result execute(UIExecutionContext context) throws Exception
    {
-      Booster qs = type.getValue();
+      Booster qs = booster.getValue();
       DirectoryResource initialDir = (DirectoryResource) context.getUIContext().getInitialSelection().get();
       DirectoryResource projectDirectory = initialDir.getChildDirectory(named.getValue());
       // Using ProjectFactory to invoke bound listeners

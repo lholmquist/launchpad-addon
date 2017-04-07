@@ -22,9 +22,9 @@ public class Booster
    private String id;
    private String githubRepo;
    private String gitRef;
-   private Mission mission;
    private String description = "No description available";
    private String boosterDescriptorPath = ".openshiftio/booster.yaml";
+   private String missionId;
 
    private Map<String, Object> metadata = Collections.emptyMap();
 
@@ -120,19 +120,19 @@ public class Booster
    }
 
    /**
-    * @return the mission
+    * @param missionId the missionId to set
     */
-   public Mission getMission()
+   public void setMissionId(String missionId)
    {
-      return mission;
+      this.missionId = missionId;
    }
 
    /**
-    * @param mission the mission to set
+    * @return the missionId
     */
-   public void setMission(Mission mission)
+   public String getMissionId()
    {
-      this.mission = mission;
+      return missionId;
    }
 
    /**

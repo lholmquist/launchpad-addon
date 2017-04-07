@@ -7,8 +7,6 @@
 
 package io.openshift.launchpad.catalog;
 
-import java.net.URI;
-
 /**
  *
  * @author <a href="mailto:ggastald@redhat.com">George Gastaldi</a>
@@ -17,7 +15,7 @@ public class Mission
 {
    private String id;
    private String name;
-   private URI docURI;
+   private String docURI;
 
    /**
     * @return the id
@@ -54,7 +52,7 @@ public class Mission
    /**
     * @return the docURI
     */
-   public URI getDocURI()
+   public String getDocURI()
    {
       return docURI;
    }
@@ -62,7 +60,7 @@ public class Mission
    /**
     * @param docURI the docURI to set
     */
-   public void setDocURI(URI docURI)
+   public void setDocURI(String docURI)
    {
       this.docURI = docURI;
    }

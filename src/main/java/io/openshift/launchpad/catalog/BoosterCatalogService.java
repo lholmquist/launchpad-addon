@@ -11,8 +11,10 @@ import static io.openshift.launchpad.Files.deleteRecursively;
 import static io.openshift.launchpad.Files.removeFileExtension;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -23,7 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,7 +83,9 @@ public class BoosterCatalogService
    private final ReentrantReadWriteLock reentrantLock = new ReentrantReadWriteLock();
 
    private Path catalogPath;
+
    private volatile List<Booster> boosters = Collections.emptyList();
+   private volatile List<Mission> missions = Collections.emptyList();
 
    private ScheduledExecutorService executorService;
 
@@ -144,10 +148,10 @@ public class BoosterCatalogService
             }
          }
          // Index missions
-         Map<String, Mission> missions = indexMissions(catalogPath.resolve(MISSIONS_YAML));
-         final Path moduleRoot = catalogPath.resolve(MODULES_DIR);
-         final List<Booster> quickstarts = new ArrayList<>();
+         final List<Mission> missions = indexMissions(catalogPath.resolve(MISSIONS_YAML));
          // Read the YAML files
+         final Path moduleRoot = catalogPath.resolve(MODULES_DIR);
+         final List<Booster> boosters = new ArrayList<>();
          Files.walkFileTree(catalogPath, new SimpleFileVisitor<Path>()
          {
             @Override
@@ -160,7 +164,7 @@ public class BoosterCatalogService
                {
                   String id = removeFileExtension(fileName);
                   Path modulePath = catalogPath.resolve(MODULES_DIR + File.separator + id);
-                  indexBooster(id, file, modulePath, missions).ifPresent(quickstarts::add);
+                  indexBooster(id, file, modulePath).ifPresent(boosters::add);
                }
                return FileVisitResult.CONTINUE;
             }
@@ -171,8 +175,10 @@ public class BoosterCatalogService
                return dir.startsWith(moduleRoot) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
          });
-         quickstarts.sort(Comparator.comparing(Booster::getName));
-         this.boosters = Collections.unmodifiableList(quickstarts);
+         boosters.sort(Comparator.comparing(Booster::getName));
+         missions.sort(Comparator.comparing(Mission::getName));
+         this.missions = Collections.unmodifiableList(missions);
+         this.boosters = Collections.unmodifiableList(boosters);
       }
       catch (GitAPIException e)
       {
@@ -189,21 +195,44 @@ public class BoosterCatalogService
       }
    }
 
-   private Map<String, Mission> indexMissions(Path file)
+   private List<Mission> indexMissions(Path file)
    {
-      Map<String, Mission> missions = new HashMap<>();
-      final Yaml yaml = new Yaml();
-      try (BufferedReader reader = Files.newBufferedReader(file))
+      List<Mission> missions = new ArrayList<>();
+      if (Files.exists(file))
       {
-         for (Object item : yaml.loadAll(reader))
+         final Yaml yaml = new Yaml();
+         try
          {
-            Mission mission = (Mission) item;
-            missions.put(mission.getId(), mission);
+            List<String> lines = Files.readAllLines(file);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PrintWriter pw = new PrintWriter(baos, true);
+            for (Iterator<String> it = lines.iterator(); it.hasNext();)
+            {
+               String line = it.next();
+               // --- is the object separator
+               if ("---".equals(line))
+               {
+                  // Flush
+                  Mission mission = yaml.loadAs(baos.toString(), Mission.class);
+                  missions.add(mission);
+                  baos.reset();
+               }
+               else
+               {
+                  pw.println(line);
+               }
+            }
+            if (baos.size() > 0)
+            {
+               // Flush
+               Mission mission = yaml.loadAs(baos.toString(), Mission.class);
+               missions.add(mission);
+            }
          }
-      }
-      catch (Exception e)
-      {
-         logger.log(Level.SEVERE, "Error while reading metadata from " + file, e);
+         catch (Exception e)
+         {
+            logger.log(Level.SEVERE, "Error while reading metadata from " + file, e);
+         }
       }
       return missions;
    }
@@ -215,7 +244,7 @@ public class BoosterCatalogService
     * @return an {@link Optional} containing a {@link Booster}
     */
    @SuppressWarnings("unchecked")
-   private Optional<Booster> indexBooster(String id, Path file, Path moduleDir, Map<String, Mission> missions)
+   private Optional<Booster> indexBooster(String id, Path file, Path moduleDir)
    {
       final Yaml yaml = new Yaml();
       logger.info(() -> "Indexing " + file + " ...");
@@ -311,6 +340,20 @@ public class BoosterCatalogService
       {
          readLock.lock();
          return boosters;
+      }
+      finally
+      {
+         readLock.unlock();
+      }
+   }
+
+   public List<Mission> getMissions()
+   {
+      Lock readLock = reentrantLock.readLock();
+      try
+      {
+         readLock.lock();
+         return missions;
       }
       finally
       {
